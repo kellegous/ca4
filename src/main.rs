@@ -3,8 +3,12 @@ use cairo::{Format, ImageSurface};
 use clap::Parser;
 use rand::{Rng, SeedableRng};
 use rand_pcg::Pcg64;
+use std::collections::HashMap;
+use std::io::Write;
 use std::str::FromStr;
 use std::{error::Error, fmt::Debug, fs};
+
+const HISTORY_FILE: &str = ".history.json";
 
 #[derive(Parser, Debug)]
 struct Options {
@@ -28,6 +32,9 @@ struct Options {
 
     #[clap(long, default_value = "out.png")]
     dest: String,
+
+    #[clap(long, default_value_t = true)]
+    write_history_file: bool,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -110,6 +117,21 @@ impl Debug for State {
     }
 }
 
+fn append_history(seed: &Seed, theme: usize, rule: Rule) -> Result<(), Box<dyn Error>> {
+    let f = fs::OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open(HISTORY_FILE)?;
+    let mut entry = HashMap::new();
+    entry.insert("time", chrono::Local::now().to_rfc3339());
+    entry.insert("seed", seed.to_string());
+    entry.insert("theme", theme.to_string());
+    entry.insert("rule", rule.to_string());
+    serde_json::to_writer(&f, &entry)?;
+    writeln!(&f)?;
+    Ok(())
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
     let options = Options::parse();
 
@@ -157,6 +179,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     img.write_to_png(&mut fs::File::create(&options.dest)?)?;
+
+    if options.write_history_file {
+        append_history(&options.seed, theme, rule)?;
+    }
 
     Ok(())
 }
