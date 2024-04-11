@@ -3,10 +3,8 @@ use cairo::{Format, ImageSurface};
 use clap::Parser;
 use rand::{Rng, SeedableRng};
 use rand_pcg::Pcg64;
-use std::collections::HashMap;
-use std::io::Write;
-use std::str::FromStr;
-use std::{error::Error, fmt::Debug, fs};
+use serde::Serialize;
+use std::{error::Error, fmt::Debug, fs, io::Write, path::Path, str::FromStr};
 
 const HISTORY_FILE: &str = ".history.json";
 
@@ -71,6 +69,12 @@ impl std::fmt::Display for Rule {
     }
 }
 
+impl serde::ser::Serialize for Rule {
+    fn serialize<S: serde::ser::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(&format!("{:x}", self.rule))
+    }
+}
+
 struct State {
     v: Vec<u8>,
 }
@@ -117,19 +121,29 @@ impl Debug for State {
     }
 }
 
-fn append_history(seed: &Seed, theme: usize, rule: Rule) -> Result<(), Box<dyn Error>> {
-    let f = fs::OpenOptions::new()
-        .append(true)
-        .create(true)
-        .open(HISTORY_FILE)?;
-    let mut entry = HashMap::new();
-    entry.insert("time", chrono::Local::now().to_rfc3339());
-    entry.insert("seed", seed.to_string());
-    entry.insert("theme", theme.to_string());
-    entry.insert("rule", rule.to_string());
-    serde_json::to_writer(&f, &entry)?;
-    writeln!(&f)?;
-    Ok(())
+#[derive(Debug, Serialize)]
+struct Entry {
+    time: chrono::DateTime<chrono::Local>,
+    seed: Seed,
+    theme: usize,
+    rule: Rule,
+}
+
+impl Entry {
+    fn new(time: chrono::DateTime<chrono::Local>, seed: Seed, theme: usize, rule: Rule) -> Self {
+        Self {
+            time,
+            seed,
+            theme,
+            rule,
+        }
+    }
+
+    fn append_to<P: AsRef<Path>>(&self, dst: P) -> Result<(), Box<dyn Error>> {
+        let f = fs::OpenOptions::new().append(true).create(true).open(dst)?;
+        writeln!(&f, "{}", serde_json::to_string(self)?)?;
+        Ok(())
+    }
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -181,7 +195,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     img.write_to_png(&mut fs::File::create(&options.dest)?)?;
 
     if options.write_history_file {
-        append_history(&options.seed, theme, rule)?;
+        Entry::new(chrono::Local::now(), options.seed, theme, rule).append_to(HISTORY_FILE)?;
     }
 
     Ok(())

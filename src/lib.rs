@@ -212,6 +212,12 @@ impl std::fmt::Display for Seed {
     }
 }
 
+impl serde::ser::Serialize for Seed {
+    fn serialize<S: serde::ser::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(&format!("{:08x}", self.v))
+    }
+}
+
 impl Seed {
     pub fn new(v: u64) -> Self {
         Self { v }
